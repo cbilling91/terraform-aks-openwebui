@@ -1,0 +1,23 @@
+# Example Terraform variables file
+# Copy this file to terraform.tfvars and update with your actual values
+# DO NOT commit terraform.tfvars to git (it's in .gitignore)
+
+project_name        = "uniqueai-poc"
+environment         = "demo"
+location            = "eastus"
+resource_group_name = "rg-uniqueai-poc-demo"
+
+# Azure OpenAI account name must be globally unique
+# Replace <unique-id> with something unique (e.g., your initials + random numbers)
+openai_account_name = "openai-uniqueai-<unique-id>"
+
+aks_cluster_name = "aks-uniqueai-poc"
+aks_dns_prefix   = "uniqueai-poc"
+
+tags = {
+  Project     = "UniqueAI-POC"
+  Environment = "Demo"
+  ManagedBy   = "Terraform"
+  Purpose     = "CaseStudy"
+  Owner       = "YourName"
+}
