@@ -1,5 +1,10 @@
 locals {
-  app_fqdn = "${var.app_dns_label}.${var.location}.cloudapp.azure.com"
+  resource_group_name = "rg-${var.project_name}-${var.environment}"
+  openai_account_name = var.project_name
+  aks_cluster_name    = var.project_name
+  aks_dns_prefix      = var.project_name
+  app_dns_label       = var.project_name
+  app_fqdn            = "${local.app_dns_label}.${var.location}.cloudapp.azure.com"
 }
 
 # Generate a unique suffix for globally unique resource names
@@ -13,7 +18,7 @@ resource "random_string" "unique_suffix" {
 module "resource_group" {
   source = "./modules/resource-group"
 
-  resource_group_name = var.resource_group_name
+  resource_group_name = local.resource_group_name
   location            = var.location
   tags                = var.tags
 }
@@ -22,7 +27,7 @@ module "resource_group" {
 module "ai_foundry" {
   source = "./modules/ai-foundry"
 
-  openai_account_name = "${var.openai_account_name}-${random_string.unique_suffix.result}"
+  openai_account_name = "${local.openai_account_name}-${random_string.unique_suffix.result}"
   location            = var.location
   resource_group_name = module.resource_group.resource_group_name
 
@@ -40,13 +45,12 @@ module "ai_foundry" {
 module "aks" {
   source = "./modules/aks"
 
-  cluster_name        = var.aks_cluster_name
+  cluster_name        = local.aks_cluster_name
   location            = var.location
   resource_group_name = module.resource_group.resource_group_name
-  dns_prefix          = var.aks_dns_prefix
+  dns_prefix          = local.aks_dns_prefix
 
-  # Kubernetes version
-  kubernetes_version = "1.34.4"
+  kubernetes_version = var.kubernetes_version
 
   # System node pool (regular nodes)
   system_node_count   = 1
@@ -61,24 +65,6 @@ module "aks" {
   depends_on = [module.resource_group]
 }
 
-# Kubernetes Gateway API standard CRDs (required by Traefik Gateway API support)
-# Fetched from the official release and applied via the kubectl provider, which
-# does not validate CRD schemas at plan time (unlike kubernetes_manifest).
-data "http" "gateway_api_crds" {
-  url = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml"
-}
-
-data "kubectl_file_documents" "gateway_api_crds" {
-  content = data.http.gateway_api_crds.response_body
-}
-
-resource "kubectl_manifest" "gateway_api_crds" {
-  for_each  = data.kubectl_file_documents.gateway_api_crds.manifests
-  yaml_body = each.value
-
-  depends_on = [module.aks]
-}
-
 # Static public IP for Traefik — placed in AKS node resource group where the
 # cluster identity has automatic permissions
 resource "azurerm_public_ip" "ingress" {
@@ -87,7 +73,7 @@ resource "azurerm_public_ip" "ingress" {
   resource_group_name = module.aks.node_resource_group
   allocation_method   = "Static"
   sku                 = "Standard"
-  domain_name_label   = var.app_dns_label
+  domain_name_label   = local.app_dns_label
   tags                = var.tags
 
   depends_on = [module.aks]
@@ -98,6 +84,7 @@ resource "helm_release" "traefik" {
   name             = "traefik"
   repository       = "https://helm.traefik.io/traefik"
   chart            = "traefik"
+  version          = var.traefik_chart_version
   namespace        = "traefik"
   create_namespace = true
   timeout          = 300
@@ -134,7 +121,7 @@ resource "helm_release" "traefik" {
     })
   ]
 
-  depends_on = [module.aks, azurerm_public_ip.ingress, kubectl_manifest.gateway_api_crds]
+  depends_on = [module.aks, azurerm_public_ip.ingress]
 }
 
 # cert-manager for TLS certificate lifecycle management
@@ -142,7 +129,7 @@ resource "helm_release" "cert_manager" {
   name             = "cert-manager"
   repository       = "https://charts.jetstack.io"
   chart            = "cert-manager"
-  version          = "v1.16.3"
+  version          = var.cert_manager_chart_version
   namespace        = "cert-manager"
   create_namespace = true
   timeout          = 300
@@ -268,7 +255,7 @@ resource "kubectl_manifest" "traefik_gatewayclass" {
     }
   })
 
-  depends_on = [helm_release.traefik, kubectl_manifest.gateway_api_crds]
+  depends_on = [helm_release.traefik]
 }
 
 resource "kubectl_manifest" "traefik_gateway" {
@@ -395,7 +382,7 @@ resource "kubectl_manifest" "litellm_deployment" {
           containers = [
             {
               name  = "litellm"
-              image = "ghcr.io/berriai/litellm:main-stable"
+              image = var.litellm_image
               args  = ["--config", "/app/config.yaml", "--port", "4000"]
               ports = [{ containerPort = 4000 }]
               env = [
@@ -464,6 +451,7 @@ resource "helm_release" "open_webui" {
   name       = "open-webui"
   repository = "https://helm.openwebui.com/"
   chart      = "open-webui"
+  version    = var.open_webui_chart_version
   namespace  = "default"
   timeout    = 600 # 10 minutes
 
@@ -563,4 +551,34 @@ resource "helm_release" "open_webui" {
     kubectl_manifest.traefik_gateway,
     kubectl_manifest.letsencrypt_issuer,
   ]
+}
+
+resource "null_resource" "post_deploy" {
+  triggers = {
+    cluster = local.aks_cluster_name
+  }
+
+  # Merge the new cluster into local kubeconfig
+  provisioner "local-exec" {
+    command = "az aks get-credentials --resource-group ${local.resource_group_name} --name ${local.aks_cluster_name} --overwrite-existing"
+  }
+
+  # Wait for the app URL to respond (up to 10 minutes)
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Waiting for https://${local.app_fqdn} to be ready..."
+      for i in $(seq 1 60); do
+        if curl -sf --max-time 10 "https://${local.app_fqdn}" > /dev/null 2>&1; then
+          echo "App is ready at https://${local.app_fqdn}"
+          exit 0
+        fi
+        echo "  Attempt $i/60 — not ready yet, retrying in 10s..."
+        sleep 10
+      done
+      echo "Warning: app did not respond within 10 minutes. Check certificate and pod status."
+      exit 0
+    EOT
+  }
+
+  depends_on = [helm_release.open_webui, kubectl_manifest.open_webui_certificate]
 }
