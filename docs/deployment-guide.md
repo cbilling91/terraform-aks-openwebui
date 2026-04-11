@@ -147,7 +147,7 @@ Before running deployment scripts, complete the following:
 ```bash
 cd ~/projects
 git clone <repository-url>
-cd uniqueai-project
+cd aks-openwebui-project
 ```
 
 ### 2. Configure Variables
@@ -161,21 +161,21 @@ cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 Edit `terraform/terraform.tfvars`:
 
 ```hcl
-project_name        = "uniqueai-poc"
+project_name        = "aks-openwebui-poc"
 environment         = "demo"
 location            = "eastus"
-resource_group_name = "rg-uniqueai-poc-demo"
+resource_group_name = "rg-aks-openwebui-poc-demo"
 
 # IMPORTANT: Must be globally unique!
 # Replace <unique-id> with your initials + random numbers
-# Example: openai-uniqueai-jd12345
-openai_account_name = "openai-uniqueai-<unique-id>"
+# Example: openai-aks-openwebui-jd12345
+openai_account_name = "openai-aks-openwebui-<unique-id>"
 
-aks_cluster_name = "aks-uniqueai-poc"
-aks_dns_prefix   = "uniqueai-poc"
+aks_cluster_name = "aks-aks-openwebui-poc"
+aks_dns_prefix   = "aks-openwebui-poc"
 
 tags = {
-  Project     = "UniqueAI-POC"
+  Project     = "aks-openwebui-POC"
   Environment = "Demo"
   ManagedBy   = "Terraform"
   Purpose     = "CaseStudy"
@@ -233,7 +233,7 @@ terraform {
     resource_group_name  = "rg-terraform-state"
     storage_account_name = "tfstateabcd1234"
     container_name       = "tfstate"
-    key                  = "uniqueai-poc.tfstate"
+    key                  = "aks-openwebui-poc.tfstate"
   }
 }
 
@@ -340,10 +340,10 @@ Continue with deployment? (yes/no):
 Type **`yes`** and press Enter.
 
 **Resources created:**
-- Resource Group: `rg-uniqueai-poc-demo`
-- Azure Cognitive Services (OpenAI): `openai-uniqueai-<unique-id>`
+- Resource Group: `rg-aks-openwebui-poc-demo`
+- Azure Cognitive Services (OpenAI): `openai-aks-openwebui-<unique-id>`
 - GPT-4 Deployment: `gpt-4-deployment`
-- AKS Cluster: `aks-uniqueai-poc`
+- AKS Cluster: `aks-aks-openwebui-poc`
   - System Node Pool: 1x Standard_B2s (regular)
   - User Node Pool: 1x Standard_B2s (spot)
 
@@ -430,9 +430,9 @@ Deployment Complete!
 ========================================
 
 Resources Created:
-  Resource Group: rg-uniqueai-poc-demo
-  AKS Cluster: aks-uniqueai-poc
-  Azure OpenAI Endpoint: https://openai-uniqueai-xxx.openai.azure.com
+  Resource Group: rg-aks-openwebui-poc-demo
+  AKS Cluster: aks-aks-openwebui-poc
+  Azure OpenAI Endpoint: https://openai-aks-openwebui-xxx.openai.azure.com
   GPT-4 Deployment: gpt-4-deployment
 
 Open WebUI Access:
@@ -458,20 +458,20 @@ Useful Commands:
 
 ```bash
 # Check resource group
-az group show --name rg-uniqueai-poc-demo
+az group show --name rg-aks-openwebui-poc-demo
 
 # List all resources
-az resource list --resource-group rg-uniqueai-poc-demo --output table
+az resource list --resource-group rg-aks-openwebui-poc-demo --output table
 
 # Check Azure OpenAI
 az cognitiveservices account show \
   --name <openai-account-name> \
-  --resource-group rg-uniqueai-poc-demo
+  --resource-group rg-aks-openwebui-poc-demo
 
 # Check AKS cluster
 az aks show \
-  --name aks-uniqueai-poc \
-  --resource-group rg-uniqueai-poc-demo
+  --name aks-aks-openwebui-poc \
+  --resource-group rg-aks-openwebui-poc-demo
 ```
 
 ### 2. Verify Kubernetes Resources
@@ -568,7 +568,7 @@ Track costs in Azure Portal:
 1. Navigate to Cost Management + Billing
 2. Select your subscription
 3. View cost analysis
-4. Filter by resource group: `rg-uniqueai-poc-demo`
+4. Filter by resource group: `rg-aks-openwebui-poc-demo`
 
 ---
 
@@ -621,7 +621,7 @@ cd terraform
 terraform destroy -auto-approve
 
 # 4. Verify resource group deletion
-az group show --name rg-uniqueai-poc-demo
+az group show --name rg-aks-openwebui-poc-demo
 # Should return error: ResourceGroupNotFound
 ```
 

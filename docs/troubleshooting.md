@@ -46,7 +46,7 @@ terraform force-unlock <LOCK_ID>
 
 **Symptom:**
 ```
-Error: A resource with the ID "/subscriptions/.../cognitiveAccounts/openai-uniqueai-xxx" already exists
+Error: A resource with the ID "/subscriptions/.../cognitiveAccounts/openai-aks-openwebui-xxx" already exists
 ```
 
 **Cause:** Azure OpenAI account names must be globally unique.
@@ -58,7 +58,7 @@ Error: A resource with the ID "/subscriptions/.../cognitiveAccounts/openai-uniqu
 
 ```hcl
 # Use your initials + random numbers
-openai_account_name = "openai-uniqueai-abc1234"
+openai_account_name = "openai-aks-openwebui-abc1234"
 ```
 
 ---

@@ -167,30 +167,18 @@ echo "Deployment Complete!"
 echo "=========================================="
 echo ""
 
+APP_URL=$(terraform output -raw app_url 2>/dev/null || echo "")
 RESOURCE_GROUP=$(terraform output -raw resource_group_name 2>/dev/null || echo "")
 AKS_CLUSTER_NAME=$(terraform output -raw aks_cluster_name 2>/dev/null || echo "")
-OPENAI_ENDPOINT=$(terraform output -raw openai_endpoint 2>/dev/null || echo "")
 OPENAI_DEPLOYMENT=$(terraform output -raw openai_deployment_name 2>/dev/null || echo "")
 
-echo "Resources Created:"
-echo "  Resource Group: $RESOURCE_GROUP"
-echo "  AKS Cluster: $AKS_CLUSTER_NAME"
-echo "  Azure OpenAI Endpoint: $OPENAI_ENDPOINT"
-echo "  GPT-4 Deployment: $OPENAI_DEPLOYMENT"
+echo "  App URL:          ${APP_URL:-n/a}"
+echo "  Resource Group:   $RESOURCE_GROUP"
+echo "  AKS Cluster:      $AKS_CLUSTER_NAME"
+echo "  OpenAI Deployment: $OPENAI_DEPLOYMENT"
 echo ""
-
-APP_URL=$(terraform output -raw app_url 2>/dev/null || echo "")
 if [ -n "$APP_URL" ]; then
-    echo "Open WebUI Access:"
-    echo "  URL: $APP_URL"
-    echo ""
-    echo "Next Steps:"
-    echo "  1. Open your browser and navigate to: $APP_URL"
-    echo "  2. Create an account (first user becomes admin)"
-    echo "  3. Start chatting!"
-else
-    echo "⚠️  Could not retrieve app URL"
-    echo "  Run: terraform output app_url"
+    echo "Open $APP_URL in your browser to start chatting."
 fi
 echo ""
 

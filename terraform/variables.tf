@@ -1,7 +1,7 @@
 variable "project_name" {
   description = "Name of the project - used for resource naming"
   type        = string
-  default     = "uniqueai-poc"
+  default     = "aks-openwebui-poc"
 }
 
 variable "environment" {
@@ -19,25 +19,25 @@ variable "location" {
 variable "resource_group_name" {
   description = "Name of the resource group"
   type        = string
-  default     = "rg-uniqueai-poc-demo"
+  default     = "rg-aks-openwebui-poc-demo"
 }
 
 variable "openai_account_name" {
   description = "Name of the Azure OpenAI account (will have unique suffix appended automatically)"
   type        = string
-  default     = "openai-uniqueai"
+  default     = "openai-aks-openwebui"
 }
 
 variable "aks_cluster_name" {
   description = "Name of the AKS cluster"
   type        = string
-  default     = "aks-uniqueai-poc"
+  default     = "aks-aks-openwebui-poc"
 }
 
 variable "aks_dns_prefix" {
   description = "DNS prefix for the AKS cluster"
   type        = string
-  default     = "uniqueai-poc"
+  default     = "aks-openwebui-poc"
 }
 
 variable "openai_model_name" {
@@ -55,7 +55,7 @@ variable "openai_model_version" {
 variable "app_dns_label" {
   description = "DNS label for the ingress public IP — becomes <label>.<region>.cloudapp.azure.com"
   type        = string
-  default     = "uniqueai-poc"
+  default     = "aks-openwebui-poc"
 }
 
 variable "letsencrypt_email" {
@@ -67,7 +67,7 @@ variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)
   default = {
-    Project     = "UniqueAI-POC"
+    Project     = "aks-openwebui-POC"
     Environment = "Demo"
     ManagedBy   = "Terraform"
     Purpose     = "CaseStudy"

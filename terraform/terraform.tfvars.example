@@ -2,20 +2,20 @@
 # Copy this file to terraform.tfvars and update with your actual values
 # DO NOT commit terraform.tfvars to git (it's in .gitignore)
 
-project_name        = "uniqueai-poc"
+project_name        = "aks-openwebui-poc"
 environment         = "demo"
 location            = "eastus"
-resource_group_name = "rg-uniqueai-poc-demo"
+resource_group_name = "rg-aks-openwebui-poc-demo"
 
 # Azure OpenAI account name must be globally unique
 # Replace <unique-id> with something unique (e.g., your initials + random numbers)
-openai_account_name = "openai-uniqueai-<unique-id>"
+openai_account_name = "openai-aks-openwebui-<unique-id>"
 
-aks_cluster_name = "aks-uniqueai-poc"
-aks_dns_prefix   = "uniqueai-poc"
+aks_cluster_name = "aks-aks-openwebui-poc"
+aks_dns_prefix   = "aks-openwebui-poc"
 
 tags = {
-  Project     = "UniqueAI-POC"
+  Project     = "AKS-OpenWebUI-POC"
   Environment = "Demo"
   ManagedBy   = "Terraform"
   Purpose     = "CaseStudy"

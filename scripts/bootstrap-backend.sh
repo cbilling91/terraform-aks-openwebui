@@ -112,7 +112,7 @@ echo "  backend \"azurerm\" {"
 echo "    resource_group_name  = \"$BACKEND_RG_NAME\""
 echo "    storage_account_name = \"$STORAGE_ACCOUNT_NAME\""
 echo "    container_name       = \"$CONTAINER_NAME\""
-echo "    key                  = \"uniqueai-poc.tfstate\""
+echo "    key                  = \"aks-openwebui-poc.tfstate\""
 echo "  }"
 echo "}"
 echo ""
@@ -132,7 +132,7 @@ terraform {
     resource_group_name  = "$BACKEND_RG_NAME"
     storage_account_name = "$STORAGE_ACCOUNT_NAME"
     container_name       = "$CONTAINER_NAME"
-    key                  = "uniqueai-poc.tfstate"
+    key                  = "aks-openwebui-poc.tfstate"
   }
 }
 EOF

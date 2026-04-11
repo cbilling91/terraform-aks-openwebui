@@ -472,10 +472,10 @@ resource "helm_release" "open_webui" {
     yamlencode({
       replicaCount = 1
 
-      # LiteLLM proxy handles Azure OpenAI URL format and api-version internally.
-      # Open WebUI talks to LiteLLM as a standard OpenAI-compatible endpoint.
+      # LiteLLM proxy exposes a standard OpenAI-compatible /v1 endpoint.
+      # It handles Azure's deployment URL format and api-version internally.
       openaiBaseApiUrl = "http://litellm.default.svc.cluster.local:4000/v1"
-      openaiApiKey     = "sk-no-key" # LiteLLM has no master_key — any value works
+      openaiApiKey     = "sk-no-key"
 
       # Disable subcharts not needed for this setup
       ollama = {
@@ -494,6 +494,14 @@ resource "helm_release" "open_webui" {
         {
           name  = "DEFAULT_MODELS"
           value = module.ai_foundry.deployment_name
+        },
+        {
+          name  = "WEBUI_AUTH"
+          value = "False"
+        },
+        {
+          name  = "ENABLE_PERSISTENT_CONFIG"
+          value = "False"
         }
       ]
 

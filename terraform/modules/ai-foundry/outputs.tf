@@ -26,5 +26,5 @@ output "model_name" {
 
 output "openai_api_version" {
   description = "API version for Azure OpenAI"
-  value       = "2024-10-21"
+  value       = "2024-12-01-preview"
 }

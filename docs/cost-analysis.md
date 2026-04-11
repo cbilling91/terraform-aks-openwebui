@@ -201,7 +201,7 @@ Track costs in real-time:
 az consumption usage list \
   --start-date 2024-01-01 \
   --end-date 2024-01-31 \
-  --query "[?contains(instanceId, 'uniqueai-poc')]" \
+  --query "[?contains(instanceId, 'aks-openwebui-poc')]" \
   --output table
 
 # View costs by resource
@@ -232,7 +232,7 @@ Monitor costs daily during demo period:
 az consumption usage list \
   --start-date $(date -u -d '1 day ago' +%Y-%m-%d) \
   --end-date $(date -u +%Y-%m-%d) \
-  --query "[?contains(resourceGroup, 'uniqueai-poc')]"
+  --query "[?contains(resourceGroup, 'aks-openwebui-poc')]"
 ```
 
 ---

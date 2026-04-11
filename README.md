@@ -76,7 +76,7 @@ Before deploying, ensure you have the following installed and configured:
 
 ```bash
 # Navigate to project directory
-cd uniqueai-project
+cd aks-openwebui-project
 
 # Copy and configure Terraform variables
 cp terraform/terraform.tfvars.example terraform/terraform.tfvars
@@ -145,7 +145,7 @@ This destroys all POC resources cleanly.
 ## Project Structure
 
 ```
-uniqueai-project/
+aks-openwebui-project/
 ├── README.md                          # This file
 ├── ARCHITECTURE.md                     # Architecture documentation
 ├── terraform/                          # Infrastructure as Code
@@ -349,4 +349,4 @@ This project is provided as-is for educational and demonstration purposes.
 
 ---
 
-**Infrastructure Engineer Case Study - UniqueAI POC**
+**Infrastructure Engineer Case Study - aks-openwebui POC**

@@ -67,7 +67,7 @@ This document describes the architecture, components, design decisions, and trad
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Resource Group                              │
-│                  (rg-uniqueai-poc-demo)                         │
+│                  (rg-aks-openwebui-poc-demo)                         │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────┐    │
 │  │  Azure Cognitive Services (OpenAI)                      │    │
@@ -341,7 +341,7 @@ terraform/
 - **Resource Group:** rg-terraform-state (separate from POC resources)
 - **Storage Account:** tfstate<unique-id>
 - **Container:** tfstate
-- **State File:** uniqueai-poc.tfstate
+- **State File:** aks-openwebui-poc.tfstate
 - **Features:** Versioning enabled, encryption at rest
 - **Locking:** Automatic via Azure Blob Lease
 

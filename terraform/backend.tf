@@ -7,9 +7,10 @@
 #     resource_group_name  = "rg-terraform-state"
 #     storage_account_name = "tfstate<unique-id>"
 #     container_name       = "tfstate"
-#     key                  = "uniqueai-poc.tfstate"
+#     key                  = "aks-openwebui-poc.tfstate"
 #   }
 # }
 
 # Note: For initial deployment, you can use local state by leaving this commented.
 # After running bootstrap-backend.sh, uncomment the above block with the correct values.
+
