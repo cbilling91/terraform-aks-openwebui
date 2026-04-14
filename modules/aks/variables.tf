@@ -24,28 +24,28 @@ variable "kubernetes_version" {
   default     = null
 }
 
-variable "system_node_count" {
-  description = "Number of nodes in the system node pool"
-  type        = number
-  default     = 1
+variable "node_vm_size" {
+  description = "VM size for the system node pool"
+  type        = string
+  default     = "Standard_DS2_v2"
 }
 
-variable "system_node_vm_size" {
-  description = "VM size for system nodes"
+variable "user_node_vm_size" {
+  description = "VM size for the user (workload) node pool"
   type        = string
   default     = "Standard_D2s_v3"
 }
 
 variable "user_node_count" {
-  description = "Number of nodes in the user (spot) node pool"
+  description = "Number of nodes in the user node pool"
   type        = number
   default     = 1
 }
 
-variable "user_node_vm_size" {
-  description = "VM size for user (spot) nodes"
-  type        = string
-  default     = "Standard_D2s_v3"
+variable "spot_instances" {
+  description = "Use spot instances for the user node pool (lower cost, subject to eviction)"
+  type        = bool
+  default     = false
 }
 
 variable "tags" {

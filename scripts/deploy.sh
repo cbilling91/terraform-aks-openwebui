@@ -9,9 +9,8 @@ echo "Open WebUI + AKS + Azure OpenAI Deployment"
 echo "=========================================="
 echo ""
 
-# Change to terraform directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TERRAFORM_DIR="$SCRIPT_DIR/../terraform"
+TERRAFORM_DIR="$SCRIPT_DIR/.."
 
 cd "$TERRAFORM_DIR"
 
@@ -77,18 +76,11 @@ terraform validate
 echo "✅ Configuration valid"
 echo ""
 
-# Plan infrastructure
-echo "Planning infrastructure changes..."
-terraform plan -out=tfplan
-echo "✅ Plan created"
-echo ""
-
 # Confirm deployment
 echo "This Terraform deployment will create:"
 echo "  ✅ Resource Group"
 echo "  ✅ Azure OpenAI Service"
-echo "  ✅ AKS Cluster (Free tier with mixed node pools)"
-echo "  ✅ Gateway API CRDs (via Terraform kubectl provider)"
+echo "  ✅ AKS Cluster (single node pool)"
 echo "  ✅ Traefik Gateway (HTTPS via Let's Encrypt)"
 echo "  ✅ Kubernetes Secret (Azure OpenAI API key)"
 echo "  ✅ Open WebUI (via Helm)"
@@ -101,12 +93,31 @@ fi
 
 echo ""
 echo "=========================================="
-echo "Applying Terraform configuration"
+echo "Phase 1: Azure infrastructure"
 echo "=========================================="
 echo ""
-echo "This will take approximately 10-15 minutes..."
+echo "Creating resource group, AKS cluster, and Azure OpenAI..."
 echo ""
-terraform apply tfplan
+# The Kubernetes/Helm/kubectl providers require the AKS cluster endpoint to
+# initialize. Apply Azure resources first so the providers can connect in phase 2.
+terraform apply \
+  -target=module.resource_group \
+  -target=module.ai_foundry \
+  -target=module.aks \
+  -target=azurerm_public_ip.ingress \
+  -target=random_string.unique_suffix \
+  -auto-approve
+echo ""
+echo "✅ Azure infrastructure ready"
+
+echo ""
+echo "=========================================="
+echo "Phase 2: Kubernetes workloads"
+echo "=========================================="
+echo ""
+echo "Deploying Traefik, cert-manager, LiteLLM, and Open WebUI..."
+echo ""
+terraform apply -auto-approve
 echo ""
 echo "✅ Terraform deployment complete"
 echo ""

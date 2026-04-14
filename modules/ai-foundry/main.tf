@@ -14,18 +14,19 @@ resource "azurerm_cognitive_account" "openai" {
   custom_subdomain_name = var.openai_account_name
 }
 
-resource "azurerm_cognitive_deployment" "gpt4" {
+resource "azurerm_cognitive_deployment" "model" {
   name                 = var.deployment_name
   cognitive_account_id = azurerm_cognitive_account.openai.id
 
   model {
-    format  = "OpenAI"
-    name    = var.model_name
-    version = var.model_version
+    format = "OpenAI"
+    name   = var.model_name
   }
 
-  scale {
-    type     = "Standard"
+  sku {
+    name     = var.sku_name
     capacity = var.capacity
   }
+
+  version_upgrade_option = "OnceNewDefaultVersionAvailable"
 }

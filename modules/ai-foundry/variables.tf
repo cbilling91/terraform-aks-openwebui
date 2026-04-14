@@ -16,7 +16,7 @@ variable "resource_group_name" {
 variable "deployment_name" {
   description = "Name of the model deployment"
   type        = string
-  default     = "gpt-4o-deployment"
+  default     = "gpt-4o"
 }
 
 variable "model_name" {
@@ -25,10 +25,10 @@ variable "model_name" {
   default     = "gpt-4o"
 }
 
-variable "model_version" {
-  description = "Version of the model to deploy"
+variable "sku_name" {
+  description = "Deployment SKU (GlobalStandard works for all modern models; Standard for older ones)"
   type        = string
-  default     = "2024-11-20"
+  default     = "GlobalStandard"
 }
 
 variable "capacity" {

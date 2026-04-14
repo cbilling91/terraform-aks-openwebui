@@ -16,7 +16,7 @@ output "openai_account_name" {
 
 output "deployment_name" {
   description = "Name of the GPT-4 model deployment"
-  value       = azurerm_cognitive_deployment.gpt4.name
+  value       = azurerm_cognitive_deployment.model.name
 }
 
 output "model_name" {

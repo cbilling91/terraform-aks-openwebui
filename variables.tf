@@ -3,6 +3,24 @@ variable "project_name" {
   type        = string
 }
 
+variable "spot_instances" {
+  description = "Use spot instances for the user node pool (lower cost, subject to eviction)"
+  type        = bool
+  default     = false
+}
+
+variable "user_node_vm_size" {
+  description = "VM size for the user (workload) node pool"
+  type        = string
+  default     = "Standard_D2s_v3"
+}
+
+variable "user_node_count" {
+  description = "Number of nodes in the user node pool"
+  type        = number
+  default     = 1
+}
+
 variable "environment" {
   description = "Environment name (e.g., dev, staging, prod)"
   type        = string
@@ -20,13 +38,6 @@ variable "openai_model_name" {
   type        = string
   default     = "gpt-4o"
 }
-
-variable "openai_model_version" {
-  description = "Version of the OpenAI model to deploy"
-  type        = string
-  default     = "2024-11-20"
-}
-
 
 variable "letsencrypt_email" {
   description = "Email address for Let's Encrypt certificate registration and expiry notices"

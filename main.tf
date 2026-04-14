@@ -31,9 +31,8 @@ module "ai_foundry" {
   location            = var.location
   resource_group_name = module.resource_group.resource_group_name
 
-  deployment_name = "${var.openai_model_name}-deployment"
+  deployment_name = var.openai_model_name
   model_name      = var.openai_model_name
-  model_version   = var.openai_model_version
   capacity        = 10 # 10K TPM for cost control
 
   tags = var.tags
@@ -51,14 +50,9 @@ module "aks" {
   dns_prefix          = local.aks_dns_prefix
 
   kubernetes_version = var.kubernetes_version
-
-  # System node pool (regular nodes)
-  system_node_count   = 1
-  system_node_vm_size = "Standard_D2s_v3"
-
-  # User node pool (spot instances)
-  user_node_count   = 1
-  user_node_vm_size = "Standard_D2s_v3"
+  spot_instances     = var.spot_instances
+  user_node_vm_size  = var.user_node_vm_size
+  user_node_count    = var.user_node_count
 
   tags = var.tags
 
@@ -91,6 +85,17 @@ resource "helm_release" "traefik" {
 
   values = [
     yamlencode({
+      deployment = {
+        tolerations = [
+          {
+            key      = "kubernetes.azure.com/scalesetpriority"
+            operator = "Equal"
+            value    = "spot"
+            effect   = "NoSchedule"
+          }
+        ]
+      }
+
       providers = {
         kubernetesGateway = {
           enabled = true
@@ -106,18 +111,6 @@ resource "helm_release" "traefik" {
         }
       }
 
-      tolerations = [
-        {
-          key      = "kubernetes.azure.com/scalesetpriority"
-          operator = "Equal"
-          value    = "spot"
-          effect   = "NoSchedule"
-        }
-      ]
-
-      nodeSelector = {
-        "workload-type" = "spot"
-      }
     })
   ]
 
@@ -146,52 +139,6 @@ resource "helm_release" "cert_manager" {
           effect   = "NoSchedule"
         }
       ]
-
-      nodeSelector = {
-        "workload-type" = "spot"
-      }
-
-      webhook = {
-        tolerations = [
-          {
-            key      = "kubernetes.azure.com/scalesetpriority"
-            operator = "Equal"
-            value    = "spot"
-            effect   = "NoSchedule"
-          }
-        ]
-        nodeSelector = {
-          "workload-type" = "spot"
-        }
-      }
-
-      cainjector = {
-        tolerations = [
-          {
-            key      = "kubernetes.azure.com/scalesetpriority"
-            operator = "Equal"
-            value    = "spot"
-            effect   = "NoSchedule"
-          }
-        ]
-        nodeSelector = {
-          "workload-type" = "spot"
-        }
-      }
-
-      startupapicheck = {
-        tolerations = [
-          {
-            key      = "kubernetes.azure.com/scalesetpriority"
-            operator = "Equal"
-            value    = "spot"
-            effect   = "NoSchedule"
-          }
-        ]
-        nodeSelector = {
-          "workload-type" = "spot"
-        }
-      }
     })
   ]
 
@@ -217,21 +164,6 @@ resource "kubectl_manifest" "letsencrypt_issuer" {
             http01 = {
               ingress = {
                 ingressClassName = "traefik"
-                podTemplate = {
-                  spec = {
-                    tolerations = [
-                      {
-                        key      = "kubernetes.azure.com/scalesetpriority"
-                        operator = "Equal"
-                        value    = "spot"
-                        effect   = "NoSchedule"
-                      }
-                    ]
-                    nodeSelector = {
-                      "workload-type" = "spot"
-                    }
-                  }
-                }
               }
             }
           }
@@ -377,7 +309,12 @@ resource "kubectl_manifest" "litellm_deployment" {
       replicas = 1
       selector = { matchLabels = { app = "litellm" } }
       template = {
-        metadata = { labels = { app = "litellm" } }
+        metadata = {
+          labels = { app = "litellm" }
+          annotations = {
+            "checksum/config" = sha256("${module.ai_foundry.deployment_name}${module.ai_foundry.openai_endpoint}${module.ai_foundry.openai_api_version}")
+          }
+        }
         spec = {
           containers = [
             {
@@ -419,7 +356,6 @@ resource "kubectl_manifest" "litellm_deployment" {
               effect   = "NoSchedule"
             }
           ]
-          nodeSelector = { "workload-type" = "spot" }
         }
       }
     }
@@ -472,8 +408,6 @@ resource "helm_release" "open_webui" {
       pipelines = {
         enabled = false
       }
-      # Disable websocket: the chart has no websocket.tolerations value, so the
-      # websocket pod cannot be given the spot toleration and would fail to schedule
       websocket = {
         enabled = false
       }
@@ -501,10 +435,6 @@ resource "helm_release" "open_webui" {
           effect   = "NoSchedule"
         }
       ]
-
-      nodeSelector = {
-        "workload-type" = "spot"
-      }
 
       resources = {
         limits = {
@@ -555,7 +485,7 @@ resource "helm_release" "open_webui" {
 
 resource "null_resource" "post_deploy" {
   triggers = {
-    cluster = local.aks_cluster_name
+    always_run = timestamp()
   }
 
   # Merge the new cluster into local kubeconfig
