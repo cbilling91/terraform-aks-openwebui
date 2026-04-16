@@ -48,6 +48,7 @@ Before deploying, ensure you have the following installed and configured:
   ```bash
   az --version
   az login
+  export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
   ```
 
 - **Terraform** (v1.5+)
