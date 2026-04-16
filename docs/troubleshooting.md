@@ -1,792 +1,327 @@
 # Troubleshooting Guide
 
-Common issues and solutions for the Open WebUI on AKS with Azure OpenAI deployment.
+Common issues and solutions for the Open WebUI on AKS deployment.
 
 ## Table of Contents
 
 1. [Terraform Issues](#terraform-issues)
-2. [Azure OpenAI Issues](#azure-openai-issues)
-3. [AKS Issues](#aks-issues)
-4. [Kubernetes Issues](#kubernetes-issues)
+2. [Azure Issues](#azure-issues)
+3. [TLS / Certificate Issues](#tls--certificate-issues)
+4. [Kubernetes / Pod Issues](#kubernetes--pod-issues)
 5. [Open WebUI Issues](#open-webui-issues)
-6. [Networking Issues](#networking-issues)
-7. [Authentication Issues](#authentication-issues)
-8. [General Troubleshooting](#general-troubleshooting)
+6. [Diagnostic Commands](#diagnostic-commands)
 
 ---
 
 ## Terraform Issues
 
-### Issue: Terraform State Lock
+### Provider: `hashicorp/kubectl` not found
+
+**Symptom:**
+```
+Could not retrieve the list of available versions for provider hashicorp/kubectl:
+provider registry registry.terraform.io does not have a provider named registry.terraform.io/hashicorp/kubectl
+```
+
+**Cause:** Terraform is defaulting to the `hashicorp/` namespace for the `kubectl` provider, which doesn't exist. The correct provider is `gavinbunney/kubectl`, declared in `versions.tf`.
+
+**Solution:** Run `terraform init` from the project root (not a subdirectory). The `versions.tf` at the root declares the correct source.
+
+---
+
+### Terraform State Lock
 
 **Symptom:**
 ```
 Error: Error locking state: Error acquiring the state lock
 ```
 
-**Cause:** Previous Terraform operation was interrupted, leaving state locked.
-
 **Solution:**
 ```bash
-cd terraform
-
-# Option 1: Wait for lock to automatically release (after 2-20 minutes)
-
-# Option 2: Force unlock (use with caution)
 terraform force-unlock <LOCK_ID>
-
-# Get LOCK_ID from error message
+# LOCK_ID is printed in the error message
 ```
 
-**Prevention:** Don't interrupt Terraform operations (Ctrl+C). Let them complete or fail naturally.
+Do not interrupt `terraform apply` mid-run (Ctrl+C) — let it complete or fail cleanly.
 
 ---
 
-### Issue: OpenAI Account Name Already Exists
-
-**Symptom:**
-```
-Error: A resource with the ID "/subscriptions/.../cognitiveAccounts/openai-aks-openwebui-xxx" already exists
-```
-
-**Cause:** Azure OpenAI account names must be globally unique.
-
-**Solution:**
-1. Edit `terraform/terraform.tfvars`
-2. Change `openai_account_name` to a different unique value
-3. Try deployment again
-
-```hcl
-# Use your initials + random numbers
-openai_account_name = "openai-aks-openwebui-abc1234"
-```
-
----
-
-### Issue: Insufficient Quota
-
-**Symptom:**
-```
-Error: Compute.VMSizeNotAllowed
-The requested VM size Standard_B2s is not available in the current region
-```
-
-**Cause:** Subscription doesn't have quota for Standard_B2s VMs.
-
-**Solution:**
-```bash
-# Check current quota
-az vm list-usage --location eastus --query "[?name.value=='StandardBSFamily']"
-
-# Request quota increase:
-# 1. Azure Portal → Subscriptions → Usage + quotas
-# 2. Search for "Standard BSv2 Family vCPUs"
-# 3. Request increase to 4 vCPUs
-# 4. Wait for approval (usually 1-24 hours)
-```
-
-**Alternative:** Use different VM size in `terraform/main.tf`:
-```hcl
-system_node_vm_size = "Standard_DS2_v2"  # Alternative option
-user_node_vm_size   = "Standard_DS2_v2"
-```
-
----
-
-### Issue: Azure OpenAI Access Denied
+### Azure OpenAI: 403 Forbidden
 
 **Symptom:**
 ```
 Error: creating Cognitive Services Account: 403 Forbidden
 ```
 
-**Cause:** Subscription doesn't have Azure OpenAI access approved.
+**Cause:** Azure OpenAI access not approved for your subscription.
 
-**Solution:**
-1. Apply for access: https://aka.ms/oai/access
-2. Wait for Microsoft approval (can take several days)
-3. Verify approval: Try creating OpenAI resource in Azure Portal manually
-
-**Workaround:** Use existing Azure OpenAI resource if available.
+**Solution:** Apply for access at https://aka.ms/oai/access and wait for approval. You can verify by attempting to create an OpenAI resource manually in the Azure Portal.
 
 ---
 
-### Issue: Backend Configuration Error
+### Insufficient vCPU Quota
 
 **Symptom:**
 ```
-Error: Backend initialization required
+Error: Compute.VMSizeNotAllowed — The requested VM size is not available
 ```
-
-**Cause:** Terraform backend not configured or storage account doesn't exist.
 
 **Solution:**
 ```bash
-# Run bootstrap script to create backend
-cd scripts
-./bootstrap-backend.sh
-
-# Then reinitialize Terraform
-cd ../terraform
-terraform init -reconfigure
+az vm list-usage --location eastus --query "[?name.value=='standardDSv3Family']" --output table
 ```
+
+Request a quota increase via Azure Portal → Subscriptions → Usage + quotas. Or change `user_node_vm_size` in `terraform.tfvars` to a size with available quota.
 
 ---
 
-## Azure OpenAI Issues
-
-### Issue: API Key Authentication Failed
+### OpenAI Account Name Already Exists
 
 **Symptom:**
 ```
-HTTP Status: 401 Unauthorized
+Error: A resource with the ID ".../cognitiveAccounts/..." already exists
 ```
 
-**Cause:** Invalid or expired API key.
+**Cause:** Azure OpenAI account names must be globally unique. The name (derived from `project_name` + random suffix) collides with an existing account, possibly from a previous deployment.
 
-**Solution:**
-```bash
-# Get correct API key from Terraform
-cd terraform
-terraform output -raw openai_api_key
-
-# Update Kubernetes secret
-kubectl delete secret azure-openai-secret
-kubectl create secret generic azure-openai-secret \
-  --from-literal=api-key="<NEW_API_KEY>"
-
-# Restart Open WebUI pod
-kubectl rollout restart deployment open-webui
-```
+**Solution:** Change `project_name` in `terraform.tfvars` to something more unique.
 
 ---
 
-### Issue: Rate Limit Exceeded
+## Azure Issues
 
-**Symptom:**
-```
-HTTP Status: 429 Too Many Requests
-```
+### AKS Cluster Not Responding
 
-**Cause:** Exceeded 10K TPM (tokens per minute) capacity limit.
-
-**Solution:**
-
-**Immediate:** Wait 60 seconds for rate limit to reset.
-
-**Long-term:** Increase capacity in `terraform/main.tf`:
-```hcl
-capacity = 20  # Increase from 10 to 20 (20K TPM)
-```
-
-Then apply:
-```bash
-cd terraform
-terraform apply
-```
-
-**Note:** Higher capacity = potentially higher costs.
-
----
-
-### Issue: Model Deployment Not Found
-
-**Symptom:**
-```
-Error: The API deployment for this resource does not exist
-```
-
-**Cause:** GPT-4 deployment not created or incorrect deployment name.
+**Symptom:** `kubectl` commands hang or return `dial tcp: i/o timeout`.
 
 **Solution:**
 ```bash
-# Verify deployment exists
-az cognitiveservices account deployment list \
-  --name <openai-account-name> \
-  --resource-group <resource-group-name>
-
-# Check deployment name in Terraform configuration
-cd terraform
-terraform state show helm_release.open_webui | grep DEFAULT_MODELS
-```
-
----
-
-### Issue: Azure OpenAI Endpoint Unreachable
-
-**Symptom:**
-```
-Error: timeout connecting to endpoint
-```
-
-**Cause:** Network connectivity issue or incorrect endpoint URL.
-
-**Solution:**
-```bash
-# Test connectivity from local machine
-cd scripts
-./test-connection.sh
-
-# Test from within AKS cluster
-kubectl run test-pod --image=curlimages/curl --rm -it --restart=Never -- \
-  curl -v https://<your-endpoint>.openai.azure.com
-```
-
-**If test from AKS fails:**
-- Check NSG rules (if custom networking)
-- Verify AKS has outbound internet access
-- Check Azure OpenAI firewall settings
-
----
-
-## AKS Issues
-
-### Issue: Spot Node Evicted
-
-**Symptom:**
-```
-Node was evicted due to Azure Spot VM capacity constraints
-Pod "open-webui-xxx" is in state "Pending"
-```
-
-**Cause:** Azure reclaimed spot instance due to capacity needs.
-
-**Solution:**
-
-**Immediate:** Wait for Azure to provision new spot node (usually 1-5 minutes).
-
-**Temporary workaround:** Scale user pool to regular priority:
-```bash
-az aks nodepool update \
-  --resource-group <rg-name> \
-  --cluster-name <cluster-name> \
-  --name user \
-  --priority Regular
-```
-
-**Note:** This increases costs significantly. Switch back to spot after demo.
-
----
-
-### Issue: Cluster Not Responding
-
-**Symptom:**
-```
-Unable to connect to the server: dial tcp: i/o timeout
-```
-
-**Cause:** AKS API server unreachable.
-
-**Solution:**
-```bash
-# Refresh AKS credentials
+# Refresh kubeconfig
 az aks get-credentials \
-  --resource-group <rg-name> \
-  --name <cluster-name> \
+  --resource-group rg-<project_name>-<environment> \
+  --name <project_name> \
   --overwrite-existing
 
-# Verify cluster is running
+# Check cluster power state
 az aks show \
-  --resource-group <rg-name> \
-  --name <cluster-name> \
+  --resource-group rg-<project_name>-<environment> \
+  --name <project_name> \
   --query "powerState"
-
-# If stopped, start cluster
-az aks start \
-  --resource-group <rg-name> \
-  --name <cluster-name>
 ```
 
 ---
 
-### Issue: Node Not Ready
+### Spot Node Evicted
 
-**Symptom:**
-```
-NAME                       STATUS     ROLES   AGE
-aks-user-xxxxx-vmss000000  NotReady   agent   5m
-```
+**Symptom:** Open WebUI pod stuck in `Pending` after working previously.
 
-**Cause:** Node is initializing, experiencing issues, or recently evicted.
+**Cause:** Azure reclaimed the spot instance.
 
-**Solution:**
+**Immediate fix:** Wait 1-5 minutes — AKS will provision a replacement spot node automatically.
+
+**If demo requires guaranteed availability:** Set `spot_instances = false` in `terraform.tfvars` and run `terraform apply` to switch the user node pool to regular priority. This increases cost (~$30/month) but eliminates eviction risk.
+
+---
+
+## TLS / Certificate Issues
+
+### Certificate Not Ready
+
+**Symptom:** Browser shows TLS warning; `kubectl get certificate -A` shows `READY: False`.
+
+**Check status:**
 ```bash
-# Check node conditions
-kubectl describe node <node-name>
+kubectl describe certificate -A
+kubectl describe certificaterequest -A
+kubectl describe order -A   # cert-manager ACME order
+```
 
-# Check node events
-kubectl get events --field-selector involvedObject.name=<node-name>
+**Common causes:**
 
-# If node stuck in NotReady for >10 minutes, delete and let AKS recreate
-kubectl delete node <node-name>
+1. **DNS not yet propagated** — The Azure DNS FQDN must resolve to the static public IP before Let's Encrypt can complete the HTTP-01 challenge. The IP is assigned when Traefik starts, but DNS can take a few minutes.
+
+   ```bash
+   # Check public IP
+   kubectl get svc -n traefik
+   
+   # Verify DNS resolves
+   nslookup <project_name>.<location>.cloudapp.azure.com
+   ```
+
+2. **Traefik not yet ready** — cert-manager's HTTP-01 challenge requires Traefik to be serving traffic. Check Traefik pod status:
+   ```bash
+   kubectl get pods -n traefik
+   kubectl logs -n traefik -l app.kubernetes.io/name=traefik
+   ```
+
+3. **Rate limit hit** — Let's Encrypt enforces rate limits (5 duplicate certs per week). If you've been destroying and recreating repeatedly, you may need to wait.
+
+**Once the issue is resolved**, cert-manager retries automatically. You can force a retry by deleting the failed order:
+```bash
+kubectl delete order -A --all
 ```
 
 ---
 
-## Kubernetes Issues
+### HTTPS Redirect Loop
 
-### Issue: Pod Stuck in Pending
+**Symptom:** Browser shows "too many redirects".
 
-**Symptom:**
-```
-NAME                 READY   STATUS    RESTARTS   AGE
-open-webui-xxx       0/1     Pending   0          5m
-```
+**Cause:** Open WebUI or a reverse proxy is also trying to redirect to HTTPS, creating a loop with Traefik's HTTPS redirect.
 
-**Cause:** Pod can't be scheduled (no suitable node, tolerations, or resources).
+**Check:** Traefik is configured to redirect HTTP → HTTPS at the Gateway level. Ensure Open WebUI's Helm values don't have an additional redirect configured.
 
-**Solution:**
+---
+
+## Kubernetes / Pod Issues
+
+### Pod Stuck in Pending
+
 ```bash
-# Check why pod is pending
 kubectl describe pod <pod-name>
-
-# Common reasons:
-
-# 1. Spot node evicted (wait for new node)
-# 2. Insufficient resources
-kubectl top nodes
-
-# 3. Toleration mismatch
-kubectl get nodes --show-labels
-
-# 4. Image pull failure
-kubectl describe pod <pod-name> | grep -A10 "Events:"
+# Look at "Events:" section — it will explain why scheduling failed
 ```
+
+**Common causes:**
+- Spot node evicted (see above)
+- Insufficient node resources: `kubectl top nodes`
+- Toleration mismatch (spot taint): check node labels with `kubectl get nodes --show-labels`
 
 ---
 
-### Issue: Pod CrashLoopBackOff
+### Pod CrashLoopBackOff
 
-**Symptom:**
-```
-NAME                 READY   STATUS             RESTARTS   AGE
-open-webui-xxx       0/1     CrashLoopBackOff   5          10m
-```
-
-**Cause:** Container starts then crashes immediately.
-
-**Solution:**
 ```bash
-# Check pod logs
 kubectl logs <pod-name>
+kubectl logs <pod-name> --previous   # logs from last crash
+```
 
-# Check previous container logs (if restarted)
-kubectl logs <pod-name> --previous
+**For Open WebUI:** Check that the LiteLLM service is reachable:
+```bash
+kubectl exec -it <open-webui-pod> -- curl http://litellm-service:4000/health
+```
 
-# Common causes:
-
-# 1. Missing environment variables
-kubectl describe pod <pod-name> | grep -A10 "Environment"
-
-# 2. Secret not found
+**For LiteLLM:** Check that the Azure OpenAI secret exists and contains a valid key:
+```bash
 kubectl get secret azure-openai-secret
-
-# 3. Configuration error in Terraform
-cd terraform
-terraform state show helm_release.open_webui
-# Or check Helm values
-helm get values open-webui
-```
-
----
-
-### Issue: Secret Not Found
-
-**Symptom:**
-```
-Error: secret "azure-openai-secret" not found
-```
-
-**Cause:** Kubernetes secret wasn't created or was deleted.
-
-**Solution:**
-```bash
-# Create secret from Terraform output
-cd terraform
-API_KEY=$(terraform output -raw openai_api_key)
-
-kubectl create secret generic azure-openai-secret \
-  --from-literal=api-key="$API_KEY"
-
-# Verify secret exists
-kubectl get secret azure-openai-secret
-
-# Restart deployment to pick up secret
-kubectl rollout restart deployment open-webui
-```
-
----
-
-### Issue: ImagePullBackOff
-
-**Symptom:**
-```
-NAME                 READY   STATUS             RESTARTS   AGE
-open-webui-xxx       0/1     ImagePullBackOff   0          5m
-```
-
-**Cause:** Can't pull Open WebUI container image.
-
-**Solution:**
-```bash
-# Check image pull error
-kubectl describe pod <pod-name> | grep -A10 "Failed"
-
-# Verify image exists
-docker pull ghcr.io/open-webui/open-webui:latest
-
-# Common causes:
-# 1. Rate limit from ghcr.io (wait 1 hour)
-# 2. Network connectivity from AKS
-# 3. Image tag doesn't exist
-
-# Workaround: Use specific version instead of "latest"
-helm upgrade open-webui open-webui/open-webui \
-  --set image.tag=v0.1.117 \
-  --reuse-values
-```
-
----
-
-## Open WebUI Issues
-
-### Issue: Open WebUI Not Accessible
-
-**Symptom:** Browser shows "Connection refused" or timeout when accessing LoadBalancer IP.
-
-**Cause:** LoadBalancer not provisioned, pod not ready, or network issue.
-
-**Solution:**
-```bash
-# 1. Verify LoadBalancer IP assigned
-kubectl get svc open-webui
-# EXTERNAL-IP should show actual IP, not <pending>
-
-# 2. If pending, wait 2-5 minutes for Azure to provision
-
-# 3. Verify pod is running
-kubectl get pods
-# STATUS should be "Running", READY should be "1/1"
-
-# 4. Test connectivity from pod
-kubectl port-forward svc/open-webui 8080:80
-# Then access http://localhost:8080
-
-# 5. If port-forward works but LoadBalancer doesn't:
-# Check NSG rules on node resource group
-```
-
----
-
-### Issue: Open WebUI Shows "No Models Available"
-
-**Symptom:** Open WebUI loads but shows "No models available" error.
-
-**Cause:** Open WebUI can't connect to Azure OpenAI or wrong configuration.
-
-**Solution:**
-```bash
-# 1. Check environment variables in pod
-kubectl exec -it <pod-name> -- env | grep OPENAI
-
-# 2. Verify endpoint URL is correct
-cd terraform
-terraform output openai_endpoint
-
-# 3. Test Azure OpenAI connectivity from pod
-kubectl exec -it <pod-name> -- \
-  curl -v https://<your-endpoint>.openai.azure.com
-
-# 4. Check logs for connection errors
-kubectl logs <pod-name> | grep -i error
-
-# 5. Verify secret is correct
 kubectl get secret azure-openai-secret -o jsonpath='{.data.api-key}' | base64 -d
 ```
 
 ---
 
-### Issue: Chat Responses Are Slow
+### Secret Not Found
 
-**Symptom:** Messages take 10+ seconds to get responses.
-
-**Cause:** GPT-4 inference time, network latency, or rate limiting.
-
-**Solution:**
 ```bash
-# 1. Check if hitting rate limits
-kubectl logs <pod-name> | grep "429"
+# Check what secrets exist
+kubectl get secrets
 
-# 2. Check Azure OpenAI metrics in Azure Portal
-# Navigate to Azure OpenAI resource → Metrics
-# Look for "Total Token Count" and "Rate Limit"
-
-# 3. Increase TPM capacity (if needed)
-cd terraform
-# Edit main.tf: capacity = 20
+# Terraform manages the azure-openai-secret — if missing, re-apply
 terraform apply
-
-# 4. Verify pod resources aren't constrained
-kubectl top pod <pod-name>
 ```
 
 ---
 
-## Networking Issues
-
-### Issue: LoadBalancer IP Not Assigned
-
-**Symptom:**
-```
-NAME         TYPE           EXTERNAL-IP   PORT(S)
-open-webui   LoadBalancer   <pending>     80:30123/TCP
-```
-
-**Cause:** Azure is provisioning LoadBalancer (can take 2-5 minutes).
-
-**Solution:**
-```bash
-# Wait and watch
-kubectl get svc open-webui -w
-
-# If stuck in pending >10 minutes:
-
-# 1. Check service events
-kubectl describe svc open-webui
-
-# 2. Check AKS managed identity permissions
-az aks show \
-  --resource-group <rg-name> \
-  --name <cluster-name> \
-  --query "identity"
-
-# 3. Check node resource group exists
-az group show --name <node-resource-group-name>
-
-# 4. Delete and recreate service
-kubectl delete svc open-webui
-helm upgrade open-webui open-webui/open-webui --reuse-values
-```
-
----
-
-### Issue: Can't Access LoadBalancer from Browser
-
-**Symptom:** Timeout or "Connection refused" in browser.
-
-**Cause:** NSG blocking traffic or incorrect IP.
-
-**Solution:**
-```bash
-# 1. Verify LoadBalancer IP
-kubectl get svc open-webui -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
-
-# 2. Test connectivity
-curl -v http://<EXTERNAL-IP>
-
-# 3. Check LoadBalancer in Azure Portal
-# Node Resource Group → Load Balancer → Frontend IP
-
-# 4. Check NSG rules
-az network nsg list \
-  --resource-group <node-resource-group> \
-  --output table
-
-# 5. If all else fails, use port-forward as workaround
-kubectl port-forward svc/open-webui 8080:80
-# Access at http://localhost:8080
-```
-
----
-
-## Authentication Issues
-
-### Issue: Can't Login to Azure CLI
-
-**Symptom:**
-```
-az login
-# Opens browser but fails to authenticate
-```
-
-**Solution:**
-```bash
-# Option 1: Device code flow
-az login --use-device-code
-
-# Option 2: Service principal
-az login --service-principal \
-  -u <app-id> \
-  -p <password> \
-  --tenant <tenant-id>
-
-# Option 3: Managed identity (if on Azure VM)
-az login --identity
-```
-
----
-
-### Issue: Wrong Azure Subscription
-
-**Symptom:** Resources being created in wrong subscription.
-
-**Solution:**
-```bash
-# List all subscriptions
-az account list --output table
-
-# Set correct subscription
-az account set --subscription "<subscription-id>"
-
-# Verify
-az account show
-```
-
----
-
-### Issue: kubectl Authentication Error
-
-**Symptom:**
-```
-error: You must be logged in to the server (Unauthorized)
-```
-
-**Solution:**
-```bash
-# Refresh credentials
-az aks get-credentials \
-  --resource-group <rg-name> \
-  --name <cluster-name> \
-  --overwrite-existing
-
-# Or use helper script
-cd scripts
-./setup-kubeconfig.sh
-```
-
----
-
-## General Troubleshooting
-
-### Diagnostic Commands
+### ImagePullBackOff
 
 ```bash
-# Terraform
-terraform validate           # Validate configuration
-terraform plan              # Preview changes
-terraform state list        # List resources in state
-terraform output            # Show all outputs
-
-# Azure CLI
-az group list               # List resource groups
-az resource list --resource-group <rg> # List resources
-az aks list                 # List AKS clusters
-az cognitiveservices account list # List OpenAI accounts
-
-# Kubernetes
-kubectl get all            # List all resources
-kubectl get events --sort-by='.lastTimestamp' # Recent events
-kubectl describe pod <pod> # Pod details
-kubectl logs <pod>         # Pod logs
-kubectl top nodes          # Node resource usage
-kubectl top pods           # Pod resource usage
-
-# Open WebUI specific
-helm list                  # List Helm releases
-helm status open-webui     # Release status
-helm get values open-webui # Current values
+kubectl describe pod <pod-name> | grep -A10 "Failed"
 ```
 
-### Logs Collection
+Usually a transient rate-limit from `ghcr.io`. Wait a few minutes and the pod will retry automatically.
+
+---
+
+## Open WebUI Issues
+
+### "No Models Available"
+
+Open WebUI connects to LiteLLM, which connects to Azure OpenAI. Trace the chain:
 
 ```bash
-# Collect all logs for troubleshooting
+# 1. Is LiteLLM running?
+kubectl get pods -l app=litellm
 
-# Terraform
-cd terraform
-terraform show > terraform-state.txt
+# 2. Can Open WebUI reach LiteLLM?
+kubectl exec -it <open-webui-pod> -- curl http://litellm-service:4000/health
 
-# Kubernetes
-kubectl get all -o wide > k8s-resources.txt
-kubectl describe pod <pod-name> > pod-describe.txt
-kubectl logs <pod-name> > pod-logs.txt
-kubectl get events --sort-by='.lastTimestamp' > k8s-events.txt
+# 3. Can LiteLLM reach Azure OpenAI?
+kubectl logs -l app=litellm | tail -50
 
-# Azure
-az group show --name <rg> > resource-group.json
-az aks show --name <cluster> --resource-group <rg> > aks-cluster.json
+# 4. Is the API key valid?
+kubectl get secret azure-openai-secret -o jsonpath='{.data.api-key}' | base64 -d
 ```
 
-### Clean Slate (Nuclear Option)
+---
 
-If nothing works, start fresh:
+### Slow Responses
+
+GPT model inference typically takes 2-5 seconds. If significantly slower:
+
+1. **Rate limiting:** Check for 429 errors in LiteLLM logs:
+   ```bash
+   kubectl logs -l app=litellm | grep "429"
+   ```
+   If hitting limits, increase `capacity` in `terraform.tfvars` and re-apply.
+
+2. **Pod resource contention:**
+   ```bash
+   kubectl top pods
+   kubectl top nodes
+   ```
+
+---
+
+## Diagnostic Commands
+
+### Full Status Check
 
 ```bash
-# 1. Destroy everything
-cd scripts
-./destroy.sh
+# Nodes
+kubectl get nodes
 
-# 2. Wait for confirmation of deletion
-az group show --name <rg-name>
-# Should return: ResourceGroupNotFound
+# All pods across key namespaces
+kubectl get pods -A | grep -E "traefik|cert-manager|litellm|open-webui"
 
-# 3. Clean local state
-cd ../terraform
-rm -rf .terraform .terraform.lock.hcl terraform.tfstate terraform.tfstate.backup tfplan
+# Services
+kubectl get svc -A | grep -E "traefik|litellm|open-webui"
 
-# 4. Start over
-cd ../scripts
-./deploy.sh
+# TLS certificate
+kubectl get certificate -A
+kubectl get certificaterequest -A
+
+# Gateway
+kubectl get gateway -A
+kubectl get httproute -A
+
+# Recent events (sorted)
+kubectl get events --sort-by='.lastTimestamp' | tail -30
+```
+
+### Terraform State
+
+```bash
+terraform output          # Show all outputs including app_url
+terraform state list      # List all managed resources
+terraform plan            # Check for drift
+```
+
+### Azure
+
+```bash
+# List resources in the project resource group
+az resource list --resource-group rg-<project_name>-<environment> --output table
+
+# Check AKS cluster
+az aks show --name <project_name> --resource-group rg-<project_name>-<environment>
+
+# Check public IP
+az network public-ip show --name pip-<project_name>-ingress --resource-group <node_resource_group>
 ```
 
 ---
 
-## Getting Help
-
-If you're still stuck after trying these solutions:
-
-1. **Check logs:** Collect all logs as shown in "Logs Collection" section
-2. **Azure Support:** Create support ticket in Azure Portal
-3. **Community:**
-   - Azure AKS: https://github.com/Azure/AKS/issues
-   - Open WebUI: https://github.com/open-webui/open-webui/issues
-   - Terraform: https://discuss.hashicorp.com/c/terraform-core
-
-4. **Test in isolation:**
-   - Test Azure OpenAI separately: `./scripts/test-connection.sh`
-   - Test AKS separately: Deploy simple nginx pod
-   - Test networking separately: Use Azure Network Watcher
-
----
-
-## Prevention Checklist
-
-Avoid common issues by following these best practices:
-
-✅ **Before deployment:**
-- Verify Azure OpenAI access approved
-- Check subscription quotas
-- Ensure unique names in terraform.tfvars
-- Run `terraform validate` before apply
-
-✅ **During deployment:**
-- Don't interrupt Terraform (Ctrl+C)
-- Wait for LoadBalancer (2-5 minutes)
-- Monitor logs during deployment
-- Save Terraform outputs for reference
-
-✅ **After deployment:**
-- Test connectivity with test-connection.sh
-- Verify pod logs show no errors
-- Access Open WebUI and test chat
-- Set up cost alerts
-
-✅ **For demos:**
-- Test full workflow day before
-- Have backup plan if spot node evicted
-- Keep destroy script ready for cleanup
-- Monitor costs daily
-
----
-
-**Still having issues? Review [deployment-guide.md](deployment-guide.md) for detailed step-by-step instructions.**
+**Still stuck?**
+- Open WebUI: https://github.com/open-webui/open-webui/issues
+- Traefik: https://github.com/traefik/traefik/issues
+- cert-manager: https://cert-manager.io/docs/troubleshooting/
+- Azure AKS: https://github.com/Azure/AKS/issues

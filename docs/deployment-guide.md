@@ -1,17 +1,15 @@
 # Deployment Guide
 
-Comprehensive step-by-step guide for deploying Open WebUI on AKS with Azure OpenAI.
+Step-by-step guide for deploying Open WebUI on AKS with Azure OpenAI.
 
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
 2. [Pre-Deployment Checklist](#pre-deployment-checklist)
-3. [One-Time Backend Setup](#one-time-backend-setup)
-4. [Main Deployment](#main-deployment)
-5. [Verification](#verification)
-6. [Post-Deployment](#post-deployment)
-7. [Teardown](#teardown)
-8. [Manual Deployment](#manual-deployment-without-scripts)
+3. [Deployment](#deployment)
+4. [Verification](#verification)
+5. [Post-Deployment](#post-deployment)
+6. [Teardown](#teardown)
 
 ---
 
@@ -19,9 +17,7 @@ Comprehensive step-by-step guide for deploying Open WebUI on AKS with Azure Open
 
 ### Required Tools
 
-Install and verify the following tools before proceeding:
-
-#### 1. Azure CLI (v2.50+)
+#### Azure CLI (v2.50+)
 
 ```bash
 # Install (macOS)
@@ -33,37 +29,24 @@ choco install azure-cli
 # Install (Linux)
 curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
-# Verify installation
 az --version
-
-# Login to Azure
 az login
-
-# Set subscription (if you have multiple)
-az account list --output table
 az account set --subscription "<subscription-id>"
 ```
 
-#### 2. Terraform (v1.5+)
+#### Terraform (v1.5+)
 
 ```bash
 # Install (macOS)
-brew tap hashicorp/tap
-brew install hashicorp/tap/terraform
+brew tap hashicorp/tap && brew install hashicorp/tap/terraform
 
 # Install (Windows)
 choco install terraform
 
-# Install (Linux)
-wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
-sudo apt update && sudo apt install terraform
-
-# Verify installation
 terraform --version
 ```
 
-#### 3. kubectl (v1.27+)
+#### kubectl (v1.27+)
 
 ```bash
 # Install (macOS)
@@ -72,456 +55,164 @@ brew install kubectl
 # Install (Windows)
 choco install kubernetes-cli
 
-# Install (Linux)
-curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-
-# Verify installation
 kubectl version --client
-```
-
-#### 4. Helm (v3.12+)
-
-```bash
-# Install (macOS)
-brew install helm
-
-# Install (Windows)
-choco install kubernetes-helm
-
-# Install (Linux)
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-# Verify installation
-helm version
 ```
 
 ### Azure Requirements
 
-#### 1. Azure Subscription Access
-
-Verify you have an active Azure subscription:
-
-```bash
-az account show
-```
-
-#### 2. Azure OpenAI Access
-
-Azure OpenAI (especially GPT-4) requires申请 access:
-
-1. Navigate to: https://aka.ms/oai/access
-2. Fill out the申请 form
-3. Wait for approval (can take几 days)
-4. Verify access:
-   ```bash
-   az cognitiveservices account list-models \
-     --resource-group <test-rg> \
-     --name <test-cognitive-account>
-   ```
-
-#### 3. Resource Quotas
-
-Check your subscription has sufficient quota:
-
-```bash
-# Check quota for Standard_B2s VMs in East US
-az vm list-usage --location eastus --output table | grep StandardBSFamily
-```
-
-You need at least **4 vCPUs** available for Standard_B2s (2 VMs × 2 vCPUs each).
-
-If quota is insufficient:
-1. Azure Portal → Subscriptions → Usage + quotas
-2. Request increase for "Standard BSv2 Family vCPUs"
-3. Wait for approval
+- Active Azure subscription with permission to create resources
+- Azure OpenAI access approved for your subscription (apply at https://aka.ms/oai/access if needed)
+- Sufficient vCPU quota for your chosen VM size (default `Standard_D2s_v3` requires 4 vCPUs)
+- A domain or acceptance of the auto-assigned Azure DNS FQDN (`<project_name>.<location>.cloudapp.azure.com`)
 
 ---
 
 ## Pre-Deployment Checklist
 
-Before running deployment scripts, complete the following:
-
 ### 1. Clone Repository
 
 ```bash
-cd ~/projects
 git clone <repository-url>
-cd aks-openwebui-project
+cd terraform-aks-openwebui-project
 ```
 
 ### 2. Configure Variables
 
-Copy the example variables file:
-
 ```bash
-cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+cp terraform.tfvars.example terraform.tfvars
 ```
 
-Edit `terraform/terraform.tfvars`:
+Edit `terraform.tfvars`:
 
 ```hcl
-project_name        = "aks-openwebui-poc"
-environment         = "demo"
-location            = "eastus"
-resource_group_name = "rg-aks-openwebui-poc-demo"
-
-# IMPORTANT: Must be globally unique!
-# Replace <unique-id> with your initials + random numbers
-# Example: openai-aks-openwebui-jd12345
-openai_account_name = "openai-aks-openwebui-<unique-id>"
-
-aks_cluster_name = "aks-aks-openwebui-poc"
-aks_dns_prefix   = "aks-openwebui-poc"
+project_name      = "my-openwebui"       # Used for all resource naming and DNS label
+environment       = "demo"
+location          = "eastus"
+letsencrypt_email = "you@example.com"    # Required for TLS certificate registration
 
 tags = {
-  Project     = "aks-openwebui-POC"
+  Project     = "AKS-OpenWebUI"
   Environment = "Demo"
   ManagedBy   = "Terraform"
-  Purpose     = "CaseStudy"
-  Owner       = "YourName"
 }
 ```
 
-**Critical:** The `openai_account_name` must be globally unique across all Azure subscriptions.
+**Required:** `project_name` becomes the public DNS label — it must be unique within the Azure region. The app will be accessible at `https://<project_name>.<location>.cloudapp.azure.com`.
+
+**Optional overrides** (defaults are set in `variables.tf`):
+
+```hcl
+openai_model_name          = "gpt-4o"           # Azure OpenAI model to deploy
+spot_instances             = false               # true for ~90% cost savings (subject to eviction)
+user_node_vm_size          = "Standard_D2s_v3"
+user_node_count            = 1
+kubernetes_version         = "1.34.4"
+traefik_chart_version      = "39.0.7"
+cert_manager_chart_version = "v1.20.1"
+open_webui_chart_version   = "13.3.1"
+```
 
 ### 3. Verify Authentication
 
 ```bash
-# Ensure you're logged into Azure
 az account show
-
-# If not logged in:
-az login
-
-# Verify correct subscription is selected
 az account list --output table
 ```
 
 ---
 
-## One-Time Backend Setup
+## Deployment
 
-This step creates Azure Storage for Terraform state management. **Run only once per project.**
-
-### Automated Setup (Recommended)
+Everything — AKS cluster, Traefik ingress, cert-manager, LiteLLM, Open WebUI, TLS certificate — is deployed in a single `terraform apply`.
 
 ```bash
-cd scripts
-./bootstrap-backend.sh
+# Initialize providers and modules
+terraform init
+
+# Preview what will be created
+terraform plan
+
+# Deploy (takes 15-20 minutes)
+terraform apply
 ```
 
-The script will:
-1. ✅ Validate Azure authentication
-2. ✅ Create resource group: `rg-terraform-state`
-3. ✅ Create storage account: `tfstate<unique-id>`
-4. ✅ Enable blob versioning for state protection
-5. ✅ Create container: `tfstate`
-6. ✅ Update `terraform/backend.tf` automatically
+When prompted, type `yes` to confirm.
 
-**Output example:**
+### What Gets Deployed
 
-```
-========================================
-Backend Configuration Complete!
-========================================
+**Phase 1 — Azure infrastructure** (~5 min):
+- Resource group
+- AKS cluster with system + user node pools
+- Azure OpenAI (AI Foundry) with model deployment
+- Static public IP in the AKS node resource group
 
-Add the following to terraform/backend.tf:
+**Phase 2 — Kubernetes platform** (~5 min):
+- Traefik (ingress/gateway controller) with Gateway API
+- cert-manager with Let's Encrypt ClusterIssuer
+- Traefik GatewayClass and Gateway bound to the static IP
 
-terraform {
-  backend "azurerm" {
-    resource_group_name  = "rg-terraform-state"
-    storage_account_name = "tfstateabcd1234"
-    container_name       = "tfstate"
-    key                  = "aks-openwebui-poc.tfstate"
-  }
-}
+**Phase 3 — Application** (~5 min):
+- TLS certificate (issued by Let's Encrypt via cert-manager)
+- LiteLLM proxy deployment (fronts Azure OpenAI with OpenAI-compatible API)
+- Open WebUI Helm release
+- HTTPRoute wiring Open WebUI through the Traefik Gateway
 
-✅ backend.tf updated
-✅ Bootstrap complete!
-```
+**Post-deploy:**
+- `az aks get-credentials` updates your local kubeconfig automatically
+- Waits up to 10 minutes for `https://<fqdn>` to respond
 
-### Manual Setup (Alternative)
-
-If the script fails, create manually:
-
-```bash
-# Variables
-RG_NAME="rg-terraform-state"
-LOCATION="eastus"
-STORAGE_NAME="tfstate$(openssl rand -hex 4)"
-CONTAINER_NAME="tfstate"
-
-# Create resource group
-az group create --name $RG_NAME --location $LOCATION
-
-# Create storage account
-az storage account create \
-  --name $STORAGE_NAME \
-  --resource-group $RG_NAME \
-  --location $LOCATION \
-  --sku Standard_LRS \
-  --encryption-services blob
-
-# Get storage key
-ACCOUNT_KEY=$(az storage account keys list \
-  --resource-group $RG_NAME \
-  --account-name $STORAGE_NAME \
-  --query '[0].value' -o tsv)
-
-# Create container
-az storage container create \
-  --name $CONTAINER_NAME \
-  --account-name $STORAGE_NAME \
-  --account-key $ACCOUNT_KEY
-
-# Update terraform/backend.tf with these values
-```
-
-### Verify Backend Setup
-
-```bash
-# Check if storage account exists
-az storage account show \
-  --name <storage-account-name> \
-  --resource-group rg-terraform-state
-```
-
----
-
-## Main Deployment
-
-### Automated Deployment (Recommended)
-
-Run the automated deployment script:
-
-```bash
-cd scripts
-./deploy.sh
-```
-
-### Deployment Phases
-
-The script executes the following phases automatically:
-
-#### **Phase 1: Terraform Infrastructure** (5-7 minutes)
-
-The script will:
-1. Initialize Terraform (download providers)
-2. Validate configuration
-3. Create execution plan
-4. **Prompt for confirmation** ⚠️
-5. Apply infrastructure changes
-
-**Expected output:**
+### Deployment Output
 
 ```
-========================================
-Phase 1: Terraform Infrastructure
-========================================
+Apply complete! Resources: N added, 0 changed, 0 destroyed.
 
-Initializing Terraform...
-✅ Terraform initialized
+Outputs:
 
-Validating Terraform configuration...
-✅ Configuration valid
-
-Planning infrastructure changes...
-✅ Plan created
-
-This will create:
-  - Resource Group
-  - Azure OpenAI (GPT-4)
-  - AKS Cluster (Free tier with mixed node pools)
-
-Continue with deployment? (yes/no):
-```
-
-Type **`yes`** and press Enter.
-
-**Resources created:**
-- Resource Group: `rg-aks-openwebui-poc-demo`
-- Azure Cognitive Services (OpenAI): `openai-aks-openwebui-<unique-id>`
-- GPT-4 Deployment: `gpt-4-deployment`
-- AKS Cluster: `aks-aks-openwebui-poc`
-  - System Node Pool: 1x Standard_B2s (regular)
-  - User Node Pool: 1x Standard_B2s (spot)
-
-#### **Phase 2: AKS Configuration** (1-2 minutes)
-
-The script will:
-1. Retrieve AKS credentials
-2. Configure kubectl context
-3. Verify cluster access
-4. Create Kubernetes secret for Azure OpenAI API key
-
-**Expected output:**
-
-```
-========================================
-Phase 2: AKS Configuration
-========================================
-
-Configuring kubectl for AKS...
-✅ kubectl configured
-
-Verifying cluster access...
-NAME                                STATUS   ROLES   AGE   VERSION
-aks-system-xxxxx-vmss000000         Ready    agent   2m    v1.28.9
-aks-user-xxxxx-vmss000000           Ready    agent   2m    v1.28.9
-
-Creating Kubernetes secret for Azure OpenAI API key...
-✅ Secret created
-```
-
-#### **Phase 3: Open WebUI Deployment** (2-3 minutes)
-
-The script will:
-1. Add Open WebUI Helm repository
-2. Update Helm values with actual Azure OpenAI endpoint
-3. Deploy Open WebUI via Helm
-4. Wait for pod to be ready
-
-**Expected output:**
-
-```
-========================================
-Phase 3: Open WebUI Deployment
-========================================
-
-Adding Open WebUI Helm repository...
-✅ Helm repository added
-
-Updating Helm values with OpenAI endpoint...
-✅ Values updated
-
-Deploying Open WebUI...
-✅ Open WebUI deployed
-```
-
-#### **Phase 4: Waiting for LoadBalancer** (2-3 minutes)
-
-The script will:
-1. Monitor service for external IP assignment
-2. Display progress every 10 seconds
-3. Timeout after 5 minutes if IP not assigned
-
-**Expected output:**
-
-```
-========================================
-Phase 4: Waiting for LoadBalancer
-========================================
-
-Waiting for LoadBalancer IP (this may take 2-3 minutes)...
-  Waiting... (0/300 seconds)
-  Waiting... (10/300 seconds)
-  Waiting... (20/300 seconds)
-✅ LoadBalancer IP assigned: 20.168.45.123
-```
-
-### Deployment Summary
-
-Upon completion, you'll see:
-
-```
-========================================
-Deployment Complete!
-========================================
-
-Resources Created:
-  Resource Group: rg-aks-openwebui-poc-demo
-  AKS Cluster: aks-aks-openwebui-poc
-  Azure OpenAI Endpoint: https://openai-aks-openwebui-xxx.openai.azure.com
-  GPT-4 Deployment: gpt-4-deployment
-
-Open WebUI Access:
-  URL: http://20.168.45.123
-
-Next Steps:
-  1. Open your browser and navigate to: http://20.168.45.123
-  2. Create an account (first user becomes admin)
-  3. Start chatting with GPT-4!
-
-Useful Commands:
-  Check pods: kubectl get pods
-  Check service: kubectl get svc open-webui
-  View logs: kubectl logs -l app=open-webui
-  Destroy: cd scripts && ./destroy.sh
+app_url                = "https://my-openwebui.eastus.cloudapp.azure.com"
+aks_cluster_name       = "my-openwebui"
+resource_group_name    = "rg-my-openwebui-demo"
+openai_deployment_name = "gpt-4o"
 ```
 
 ---
 
 ## Verification
 
-### 1. Verify Azure Resources
+### Azure Resources
 
 ```bash
-# Check resource group
-az group show --name rg-aks-openwebui-poc-demo
-
-# List all resources
-az resource list --resource-group rg-aks-openwebui-poc-demo --output table
-
-# Check Azure OpenAI
-az cognitiveservices account show \
-  --name <openai-account-name> \
-  --resource-group rg-aks-openwebui-poc-demo
+# List everything in the resource group
+az resource list --resource-group rg-<project_name>-<environment> --output table
 
 # Check AKS cluster
-az aks show \
-  --name aks-aks-openwebui-poc \
-  --resource-group rg-aks-openwebui-poc-demo
+az aks show --name <project_name> --resource-group rg-<project_name>-<environment> --query "powerState"
 ```
 
-### 2. Verify Kubernetes Resources
+### Kubernetes Resources
 
 ```bash
+# Get credentials (if not already set by post-deploy)
+az aks get-credentials --resource-group rg-<project_name>-<environment> --name <project_name>
+
 # Check nodes
 kubectl get nodes
 
-# Should show 2 nodes:
-# - aks-system-xxxxx (system pool, regular)
-# - aks-user-xxxxx (user pool, spot)
+# Check all pods across relevant namespaces
+kubectl get pods -A | grep -E "traefik|cert-manager|litellm|open-webui"
 
-# Check pods
-kubectl get pods
+# Check TLS certificate status
+kubectl get certificate -A
 
-# Should show open-webui pod running
-
-# Check service
-kubectl get svc open-webui
-
-# Should show LoadBalancer with EXTERNAL-IP
-
-# Check secret
-kubectl get secret azure-openai-secret
+# Check Traefik gateway
+kubectl get gateway -A
 ```
 
-### 3. Test Azure OpenAI Connectivity
+### Access the App
 
-```bash
-cd scripts
-./test-connection.sh
-```
+1. Open `https://<project_name>.<location>.cloudapp.azure.com` in your browser
+2. You should see the Open WebUI login page with a valid TLS certificate
 
-Expected output:
-
-```
-HTTP Status: 200
-✅ Connection successful!
-
-Response:
-Hello! This is a test response from GPT-4...
-
-Azure OpenAI is working correctly!
-```
-
-### 4. Access Open WebUI
-
-1. Open browser
-2. Navigate to `http://<EXTERNAL-IP>`
-3. You should see the Open WebUI login page
+If the certificate is still provisioning (can take 1-2 minutes after deploy), you may see a browser TLS warning briefly. Wait and refresh.
 
 ---
 
@@ -529,192 +220,69 @@ Azure OpenAI is working correctly!
 
 ### First-Time Setup
 
-1. **Create Account:**
-   - Click "Sign up"
-   - Enter email and password
-   - First user becomes administrator
+1. **Create an account** — first user becomes admin
+2. **Model is pre-configured** — LiteLLM routes requests to Azure OpenAI automatically; no manual model setup needed
+3. **Start chatting**
 
-2. **Configure Model:**
-   - Open WebUI should automatically detect Azure OpenAI
-   - Model: `gpt-4-deployment`
-   - If not auto-detected, configure manually in Settings
-
-3. **Test Chat:**
-   - Start a new conversation
-   - Send a test message
-   - Verify GPT-4 responds
-
-### Monitoring
+### Useful Commands
 
 ```bash
+# View all Terraform outputs
+terraform output
+
+# Get kubeconfig
+az aks get-credentials --resource-group rg-<project_name>-<environment> --name <project_name>
+
 # Watch pod status
 kubectl get pods -w
 
-# View logs
-kubectl logs -f -l app=open-webui
+# Open WebUI logs
+kubectl logs -f -l app.kubernetes.io/name=open-webui
 
-# Check resource usage
-kubectl top pods
-kubectl top nodes
+# LiteLLM logs
+kubectl logs -f -l app=litellm
 
-# Check events
-kubectl get events --sort-by='.lastTimestamp'
+# Traefik logs
+kubectl logs -f -n traefik -l app.kubernetes.io/name=traefik
+
+# Check certificate
+kubectl describe certificate -A
 ```
 
-### Cost Monitoring
+### Redeploying a Component
 
-Track costs in Azure Portal:
+```bash
+# Force Helm release to redeploy (e.g., after config change)
+terraform apply -replace='helm_release.open_webui'
 
-1. Navigate to Cost Management + Billing
-2. Select your subscription
-3. View cost analysis
-4. Filter by resource group: `rg-aks-openwebui-poc-demo`
+# Or taint a specific resource
+terraform taint helm_release.open_webui
+terraform apply
+```
 
 ---
 
 ## Teardown
 
-### Automated Teardown (Recommended)
+```bash
+terraform destroy
+```
+
+Type `yes` to confirm. This removes all resources including the AKS cluster, Azure OpenAI service, and the resource group.
+
+**Note:** The static public IP is in the AKS node resource group (auto-created by AKS) and is destroyed automatically along with the cluster.
+
+To verify deletion:
 
 ```bash
-cd scripts
-./destroy.sh
+az group show --name rg-<project_name>-<environment>
+# Should return: ResourceGroupNotFound
 ```
-
-The script will:
-1. **Prompt for confirmation** ⚠️
-2. Uninstall Open WebUI Helm release
-3. Delete Kubernetes secret
-4. Wait for LoadBalancer cleanup (30 seconds)
-5. Destroy all Terraform-managed resources
-6. Verify resource group deletion
-
-**Expected output:**
-
-```
-⚠️  WARNING: This will destroy all deployed resources!
-
-Resources to be destroyed:
-  - Open WebUI Helm release
-  - AKS Cluster (with all nodes)
-  - Azure OpenAI Service
-  - Resource Group and all contained resources
-
-Are you sure you want to continue? (yes/no):
-```
-
-Type **`yes`** to proceed.
-
-### Manual Teardown
-
-If the script fails, teardown manually:
-
-```bash
-# 1. Uninstall Helm release
-helm uninstall open-webui
-
-# 2. Delete Kubernetes secret
-kubectl delete secret azure-openai-secret
-
-# 3. Destroy Terraform resources
-cd terraform
-terraform destroy -auto-approve
-
-# 4. Verify resource group deletion
-az group show --name rg-aks-openwebui-poc-demo
-# Should return error: ResourceGroupNotFound
-```
-
-### Cleanup Terraform State Backend (Optional)
-
-If you want to remove the Terraform state backend:
-
-```bash
-az group delete --name rg-terraform-state --yes --no-wait
-```
-
-**Warning:** This deletes the Terraform state storage. Only do this if you're completely done with the project.
 
 ---
 
-## Manual Deployment (Without Scripts)
+## See Also
 
-If you prefer manual control or troubleshooting:
-
-### Step 1: Terraform
-
-```bash
-cd terraform
-
-# Initialize
-terraform init
-
-# Plan
-terraform plan -out=tfplan
-
-# Apply
-terraform apply tfplan
-
-# Get outputs
-terraform output
-```
-
-### Step 2: Configure kubectl
-
-```bash
-# Get credentials
-az aks get-credentials \
-  --resource-group <resource-group-name> \
-  --name <aks-cluster-name> \
-  --overwrite-existing
-
-# Verify
-kubectl get nodes
-```
-
-### Step 3: Create Secret
-
-```bash
-# Get API key from Terraform output
-API_KEY=$(cd terraform && terraform output -raw openai_api_key)
-
-# Create secret
-kubectl create secret generic azure-openai-secret \
-  --from-literal=api-key="$API_KEY"
-```
-
-### Step 4: Deploy Open WebUI
-
-Open WebUI is automatically deployed by Terraform via the Helm provider. No manual steps needed!
-
-If you want to redeploy Open WebUI separately:
-
-```bash
-cd terraform
-
-# Taint the Helm release to force redeployment
-terraform taint helm_release.open_webui
-
-# Reapply
-terraform apply
-```
-
-### Step 5: Get LoadBalancer IP
-
-```bash
-kubectl get svc open-webui -w
-```
-
-Wait for EXTERNAL-IP to be assigned, then access at `http://<EXTERNAL-IP>`.
-
----
-
-## Next Steps
-
-- Review [ARCHITECTURE.md](../ARCHITECTURE.md) for architecture details
-- Check [cost-analysis.md](cost-analysis.md) for cost breakdown
-- See [troubleshooting.md](troubleshooting.md) if you encounter issues
-
----
-
-**Deployment complete! Enjoy your POC.**
+- [architecture.md](architecture.md) — architecture overview and design decisions
+- [cost-analysis.md](cost-analysis.md) — cost breakdown and optimization
+- [troubleshooting.md](troubleshooting.md) — common issues and solutions

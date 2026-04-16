@@ -50,7 +50,6 @@ variable "kubernetes_version" {
   default     = "1.34.4"
 }
 
-
 variable "traefik_chart_version" {
   description = "Helm chart version for Traefik"
   type        = string

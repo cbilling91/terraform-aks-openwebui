@@ -1,23 +1,23 @@
-# Example Terraform variables file
-# Copy this file to terraform.tfvars and update with your actual values
-# DO NOT commit terraform.tfvars to git (it's in .gitignore)
+# Copy this file to terraform.tfvars and fill in your values.
+# DO NOT commit terraform.tfvars to git (it's in .gitignore).
 
-project_name        = "aks-openwebui-poc"
-environment         = "demo"
-location            = "eastus"
-resource_group_name = "rg-aks-openwebui-poc-demo"
+project_name      = "my-openwebui"       # Used for resource naming and the public DNS label
+environment       = "demo"
+location          = "eastus"
+letsencrypt_email = "you@example.com"    # Required for Let's Encrypt TLS certificate
 
-# Azure OpenAI account name must be globally unique
-# Replace <unique-id> with something unique (e.g., your initials + random numbers)
-openai_account_name = "openai-aks-openwebui-<unique-id>"
-
-aks_cluster_name = "aks-aks-openwebui-poc"
-aks_dns_prefix   = "aks-openwebui-poc"
+# Optional overrides — defaults are set in variables.tf
+# openai_model_name          = "gpt-4o"
+# spot_instances             = false
+# user_node_vm_size          = "Standard_D2s_v3"
+# user_node_count            = 1
+# kubernetes_version         = "1.34.4"
+# traefik_chart_version      = "39.0.7"
+# cert_manager_chart_version = "v1.20.1"
+# open_webui_chart_version   = "13.3.1"
 
 tags = {
-  Project     = "AKS-OpenWebUI-POC"
+  Project     = "AKS-OpenWebUI"
   Environment = "Demo"
   ManagedBy   = "Terraform"
-  Purpose     = "CaseStudy"
-  Owner       = "YourName"
 }

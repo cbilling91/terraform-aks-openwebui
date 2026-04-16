@@ -17,12 +17,11 @@ This POC achieves **40-50% cost savings** compared to an all-regular-node deploy
 | Component | Configuration | Unit Cost | Quantity | Monthly Cost | Notes |
 |-----------|--------------|-----------|----------|--------------|-------|
 | **AKS Control Plane** | Free tier | $0 | 1 cluster | **$0** | No control plane charges |
-| **System Node Pool** | Standard_B2s (regular) | ~$35/month | 1 node | **$35** | Required for system pods |
-| **User Node Pool** | Standard_B2s (spot) | ~$3.50/month | 1 node | **$3.50** | 90% discount for spot |
-| **Azure Storage** | Standard LRS | ~$0.02/GB/month | ~50GB | **$1** | Terraform state storage |
-| **Egress Bandwidth** | Data transfer out | $0.05/GB | ~20GB | **$1** | LoadBalancer traffic |
-| **Public IP** | Static IP | ~$3/month | 1 IP | **$3** | LoadBalancer IP address |
-| | | | **Total Infrastructure** | **~$43.50** | |
+| **System Node Pool** | Standard_B4ms (regular) | ~$140/month | 1 node | **$140** | Required for system pods |
+| **User Node Pool** | Standard_D2s_v3 (regular or spot) | $70 / $7/month | 1 node | **$7–70** | Spot saves ~90% |
+| **Static Public IP** | Standard | ~$3/month | 1 IP | **$3** | Traefik ingress IP |
+| **Egress Bandwidth** | Data transfer out | $0.05/GB | ~20GB | **$1** | HTTPS traffic |
+| | | | **Total Infrastructure** | **~$150–215** | Spot vs. regular user node |
 
 ### Azure OpenAI Costs (Pay-per-use)
 
